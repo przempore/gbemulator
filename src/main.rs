@@ -76,8 +76,6 @@ fn main() {
     println!("Hello, world!");
 }
 
-// create tests
-
 #[cfg(test)]
 mod tests {
     use super::*;
