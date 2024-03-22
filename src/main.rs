@@ -264,4 +264,10 @@ mod tests {
         assert!(cpu.registers.f.half_carry);
         assert!(!cpu.registers.f.carry);
     }
+
+
+    #[test]
+    fn test_failing_test() {
+        assert!(false);
+    }
 }
