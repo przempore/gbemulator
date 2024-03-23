@@ -102,6 +102,14 @@ impl std::convert::From<u8> for FlagsRegister {
 enum Instruction {
     ADD(ArithmeticTarget),
     ADDHL(ADDHLTarget),
+    ADC(ArithmeticTarget),
+    SUB(ArithmeticTarget),
+    SBC(ArithmeticTarget),
+    AND(ArithmeticTarget),
+    OR(ArithmeticTarget),
+    XOR(ArithmeticTarget),
+    CP(ArithmeticTarget), // same as SUB but without storing the result
+    INC(ArithmeticTarget),
 }
 
 enum ArithmeticTarget {
@@ -129,15 +137,7 @@ impl CPU {
     fn execute(&mut self, instruction: Instruction) {
         match instruction {
             Instruction::ADD(target) => {
-                let value = match target {
-                    ArithmeticTarget::A => self.registers.a,
-                    ArithmeticTarget::B => self.registers.b,
-                    ArithmeticTarget::C => self.registers.c,
-                    ArithmeticTarget::D => self.registers.d,
-                    ArithmeticTarget::E => self.registers.e,
-                    ArithmeticTarget::H => self.registers.h,
-                    ArithmeticTarget::L => self.registers.l,
-                };
+                let value = self.get_value_from_target(target);
                 self.registers.a = self.add(value);
             }
             Instruction::ADDHL(target) => {
@@ -149,6 +149,57 @@ impl CPU {
                 let sum = self.addhl(value);
                 self.registers.set_hl(sum);
             }
+            Instruction::ADC(target) => {
+                let value = self.get_value_from_target(target);
+                self.registers.a = self.adc(value);
+            }
+            Instruction::SUB(target) => {
+                let value = self.get_value_from_target(target);
+                self.registers.a = self.sub(value);
+            }
+            Instruction::SBC(target) => {
+                let value = self.get_value_from_target(target);
+                self.registers.a = self.sbc(value);
+            }
+            Instruction::AND(target) => {
+                let value = self.get_value_from_target(target);
+                self.registers.a &= value;
+            }
+            Instruction::OR(target) => {
+                let value = self.get_value_from_target(target);
+                self.registers.a |= value;
+            }
+            Instruction::XOR(target) => {
+                let value = self.get_value_from_target(target);
+                self.registers.a ^= value;
+            }
+            Instruction::CP(target) => {
+                let value = self.get_value_from_target(target);
+                self.sub(value);
+            }
+            Instruction::INC(target) => {
+                match target {
+                    ArithmeticTarget::A => self.registers.a = self.inc(self.registers.a),
+                    ArithmeticTarget::B => self.registers.b = self.inc(self.registers.b),
+                    ArithmeticTarget::C => self.registers.c = self.inc(self.registers.c),
+                    ArithmeticTarget::D => self.registers.d = self.inc(self.registers.d),
+                    ArithmeticTarget::E => self.registers.e = self.inc(self.registers.e),
+                    ArithmeticTarget::H => self.registers.h = self.inc(self.registers.h),
+                    ArithmeticTarget::L => self.registers.l = self.inc(self.registers.l),
+                };
+            }
+        }
+    }
+
+    fn get_value_from_target(&self, target: ArithmeticTarget) -> u8 {
+        match target {
+            ArithmeticTarget::A => self.registers.a,
+            ArithmeticTarget::B => self.registers.b,
+            ArithmeticTarget::C => self.registers.c,
+            ArithmeticTarget::D => self.registers.d,
+            ArithmeticTarget::E => self.registers.e,
+            ArithmeticTarget::H => self.registers.h,
+            ArithmeticTarget::L => self.registers.l,
         }
     }
 
@@ -156,7 +207,7 @@ impl CPU {
         let (result, carry) = self.registers.a.overflowing_add(value);
         self.registers.f.zero = result == 0;
         self.registers.f.subtract = false;
-        self.registers.f.half_carry = (self.registers.a & 0xF) + (result & 0xF) > 0xF;
+        self.registers.f.half_carry = ((self.registers.a & 0xF) + (result & 0xF) & 0x10) == 0x10;
         self.registers.f.carry = carry;
 
         result
@@ -172,6 +223,52 @@ impl CPU {
 
         result
     }
+
+    fn adc(&mut self, value: u8) -> u8 {
+        let (mut result, carry) = self.registers.a.overflowing_add(value);
+        result += carry as u8;
+        self.registers.f.carry = carry;
+        self.registers.f.zero = result == 0;
+        self.registers.f.subtract = false;
+        // TODO: check if this is correct
+        self.registers.f.half_carry = ((self.registers.a & 0xF) + (result & 0xF) & 0x10) == 0x10;
+
+        result
+    }
+
+    fn sub(&mut self, value: u8) -> u8 {
+        let (result, borrow) = self.registers.a.overflowing_sub(value);
+        self.registers.f.zero = result == 0;
+        self.registers.f.subtract = true;
+        // TODO: check if this is correct
+        self.registers.f.half_carry = ((self.registers.a & 0xF) + (result & 0xF) & 0x10) == 0x10;
+        self.registers.f.carry = borrow;
+
+        result
+    }
+
+    fn sbc(&mut self, value: u8) -> u8 {
+        let (mut result, borrow) = self.registers.a.overflowing_sub(value);
+        result -= borrow as u8;
+        self.registers.f.zero = result == 0;
+        self.registers.f.subtract = true;
+        // TODO: check if this is correct
+        self.registers.f.half_carry = ((self.registers.a & 0xF) + (result & 0xF) & 0x10) == 0x10;
+        self.registers.f.carry = borrow;
+
+        result
+    }
+
+    fn inc(&mut self, target: u8) -> u8 {
+        let (result, carry) = target.overflowing_add(1);
+        self.registers.f.zero = result == 0;
+        self.registers.f.subtract = false;
+        // TODO: check if this is correct
+        self.registers.f.half_carry = (result & 0xF) == 0;
+        self.registers.f.carry = carry;
+
+        result
+    }
 }
 
 fn main() {
@@ -180,6 +277,15 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
+    macro_rules! test_flags {
+        ($cpu:expr, $zero:expr, $subtract:expr, $half_carry:expr, $carry:expr) => {{
+            assert_eq!($cpu.registers.f.zero, $zero);
+            assert_eq!($cpu.registers.f.subtract, $subtract);
+            assert_eq!($cpu.registers.f.half_carry, $half_carry);
+            assert_eq!($cpu.registers.f.carry, $carry);
+        }};
+    }
+
     use super::*;
 
     #[test]
@@ -233,35 +339,140 @@ mod tests {
         cpu.registers.set_hl(0x0000);
         cpu.execute(Instruction::ADDHL(ADDHLTarget::HL));
         assert_eq!(0x0000, cpu.registers.get_hl());
-        assert!(cpu.registers.f.zero);
-        assert!(!cpu.registers.f.subtract);
-        assert!(!cpu.registers.f.half_carry);
-        assert!(!cpu.registers.f.carry);
+        test_flags!(cpu, true, false, false, false);
 
         cpu.registers.set_hl(0x0001);
         cpu.execute(Instruction::ADDHL(ADDHLTarget::HL));
         assert_eq!(0x0002, cpu.registers.get_hl());
-        assert_eq!(0, u8::from(cpu.registers.f));
+        test_flags!(cpu, false, false, false, false);
 
         cpu.registers.set_hl(0xFFFF);
         cpu.execute(Instruction::ADDHL(ADDHLTarget::HL));
         assert_eq!(0xFFFE, cpu.registers.get_hl());
-        assert!(!cpu.registers.f.zero);
-        assert!(!cpu.registers.f.subtract);
-        assert!(cpu.registers.f.half_carry);
-        assert!(cpu.registers.f.carry);
+        test_flags!(cpu, false, false, true, true);
 
         cpu.registers.set_hl(0x00FF);
         cpu.execute(Instruction::ADDHL(ADDHLTarget::HL));
         assert_eq!(0x01FE, cpu.registers.get_hl());
-        assert_eq!(0, u8::from(cpu.registers.f));
+        test_flags!(cpu, false, false, false, false);
 
         cpu.registers.set_hl(0xFFF);
         cpu.execute(Instruction::ADDHL(ADDHLTarget::HL));
         assert_eq!(0x1FFE, cpu.registers.get_hl());
-        assert!(!cpu.registers.f.zero);
-        assert!(!cpu.registers.f.subtract);
-        assert!(cpu.registers.f.half_carry);
-        assert!(!cpu.registers.f.carry);
+        test_flags!(cpu, false, false, true, false);
+    }
+
+    #[test]
+    fn test_adc() {
+        let mut cpu = CPU::default();
+        cpu.registers.a = 0x00;
+        cpu.registers.c = 0x01;
+        cpu.execute(Instruction::ADC(ArithmeticTarget::C));
+        assert_eq!(0x01, cpu.registers.a);
+        test_flags!(cpu, false, false, false, false);
+
+        cpu.registers.a = 0xFF;
+        cpu.registers.d = 0x01;
+        cpu.execute(Instruction::ADC(ArithmeticTarget::D));
+        assert_eq!(0x01, cpu.registers.a);
+        test_flags!(cpu, false, false, true, true);
+
+        cpu.registers.a = 0xFF;
+        cpu.registers.d = 0x01;
+        cpu.registers.f.carry = true;
+        cpu.execute(Instruction::ADC(ArithmeticTarget::D));
+        assert_eq!(0x01, cpu.registers.a);
+        test_flags!(cpu, false, false, true, true);
+    }
+
+    #[test]
+    fn test_sub() {
+        let mut cpu = CPU::default();
+        cpu.registers.a = 0x01;
+        cpu.registers.c = 0x01;
+        cpu.execute(Instruction::SUB(ArithmeticTarget::C));
+        assert_eq!(0x00, cpu.registers.a);
+        test_flags!(cpu, true, true, false, false);
+
+        cpu.registers.a = 0x00;
+        cpu.registers.c = 0x01;
+        cpu.execute(Instruction::SUB(ArithmeticTarget::C));
+        assert_eq!(0xFF, cpu.registers.a);
+        test_flags!(cpu, false, true, false, true);
+    }
+
+    #[test]
+    fn test_sbc() {
+        let mut cpu = CPU::default();
+        cpu.registers.a = 0x01;
+        cpu.registers.c = 0x01;
+        cpu.execute(Instruction::SBC(ArithmeticTarget::C));
+        assert_eq!(0x00, cpu.registers.a);
+        test_flags!(cpu, true, true, false, false);
+    }
+
+    #[test]
+    fn test_and() {
+        let mut cpu = CPU::default();
+        cpu.registers.a = 0b1010;
+        cpu.registers.c = 0b1100;
+        cpu.execute(Instruction::AND(ArithmeticTarget::C));
+        assert_eq!(0b1000, cpu.registers.a);
+        test_flags!(cpu, false, false, false, false);
+    }
+
+    #[test]
+    fn test_or() {
+        let mut cpu = CPU::default();
+        cpu.registers.a = 0b1010;
+        cpu.registers.c = 0b1100;
+        cpu.execute(Instruction::OR(ArithmeticTarget::C));
+        assert_eq!(0b1110, cpu.registers.a);
+        test_flags!(cpu, false, false, false, false);
+    }
+
+    #[test]
+    fn test_xor() {
+        let mut cpu = CPU::default();
+        cpu.registers.a = 0b1010;
+        cpu.registers.c = 0b1100;
+        cpu.execute(Instruction::XOR(ArithmeticTarget::C));
+        assert_eq!(0b0110, cpu.registers.a);
+        test_flags!(cpu, false, false, false, false);
+    }
+
+    #[test]
+    fn test_cp() {
+        let mut cpu = CPU::default();
+        cpu.registers.a = 0x01;
+        cpu.registers.c = 0x01;
+        cpu.execute(Instruction::CP(ArithmeticTarget::C));
+        assert_eq!(0x01, cpu.registers.a);
+        test_flags!(cpu, true, true, false, false);
+
+        cpu.registers.a = 0x00;
+        cpu.registers.c = 0x01;
+        cpu.execute(Instruction::CP(ArithmeticTarget::C));
+        assert_eq!(0x00, cpu.registers.a);
+        test_flags!(cpu, false, true, false, true);
+    }
+
+    #[test]
+    fn test_inc() {
+        let mut cpu = CPU::default();
+        cpu.registers.a = 0x01;
+        cpu.execute(Instruction::INC(ArithmeticTarget::A));
+        assert_eq!(0x02, cpu.registers.a);
+        test_flags!(cpu, false, false, false, false);
+
+        cpu.registers.a = 0xFF;
+        cpu.execute(Instruction::INC(ArithmeticTarget::A));
+        assert_eq!(0x00, cpu.registers.a);
+        test_flags!(cpu, true, false, true, true);
+
+        cpu.registers.c = 0xFF;
+        cpu.execute(Instruction::INC(ArithmeticTarget::C));
+        assert_eq!(0x00, cpu.registers.c);
+        test_flags!(cpu, true, false, true, true);
     }
 }
