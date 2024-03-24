@@ -261,8 +261,8 @@ impl CPU {
         let (result, carry) = target.overflowing_add(1);
         self.registers.f.zero = result == 0;
         self.registers.f.subtract = false;
-        // TODO: check if this is correct
-        self.registers.f.half_carry = (target & 0xF) == 0xF;
+        self.registers.f.half_carry = (target & 0xF) == 0xF; // if the lower nibble is 0xF, then adding 1
+                                                             // will carry to the higher nibble
         self.registers.f.carry = carry;
 
         result
