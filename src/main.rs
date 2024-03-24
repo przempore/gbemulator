@@ -225,12 +225,12 @@ impl CPU {
     }
 
     fn adc(&mut self, value: u8) -> u8 {
+        let previous_carry = self.registers.f.carry as u8;
         let (mut result, carry) = self.registers.a.overflowing_add(value);
-        result += carry as u8;
+        result += carry as u8 + previous_carry;
         self.registers.f.carry = carry;
         self.registers.f.zero = result == 0;
         self.registers.f.subtract = false;
-        // TODO: check if this is correct
         self.registers.f.half_carry = ((self.registers.a & 0xF) + (result & 0xF) & 0x10) == 0x10;
 
         result
@@ -240,8 +240,7 @@ impl CPU {
         let (result, borrow) = self.registers.a.overflowing_sub(value);
         self.registers.f.zero = result == 0;
         self.registers.f.subtract = true;
-        // TODO: check if this is correct
-        self.registers.f.half_carry = ((self.registers.a & 0xF) + (result & 0xF) & 0x10) == 0x10;
+        self.registers.f.half_carry = (self.registers.a & 0xF) < (result & 0xF);
         self.registers.f.carry = borrow;
 
         result
@@ -252,8 +251,7 @@ impl CPU {
         result -= borrow as u8;
         self.registers.f.zero = result == 0;
         self.registers.f.subtract = true;
-        // TODO: check if this is correct
-        self.registers.f.half_carry = ((self.registers.a & 0xF) + (result & 0xF) & 0x10) == 0x10;
+        self.registers.f.half_carry = (self.registers.a & 0xF) < (result & 0xF);
         self.registers.f.carry = borrow;
 
         result
@@ -264,7 +262,7 @@ impl CPU {
         self.registers.f.zero = result == 0;
         self.registers.f.subtract = false;
         // TODO: check if this is correct
-        self.registers.f.half_carry = (result & 0xF) == 0;
+        self.registers.f.half_carry = (target & 0xF) == 0xF;
         self.registers.f.carry = carry;
 
         result
@@ -381,8 +379,15 @@ mod tests {
         cpu.registers.d = 0x01;
         cpu.registers.f.carry = true;
         cpu.execute(Instruction::ADC(ArithmeticTarget::D));
-        assert_eq!(0x01, cpu.registers.a);
+        assert_eq!(0x02, cpu.registers.a);
         test_flags!(cpu, false, false, true, true);
+
+        cpu.registers.a = 0x8F;
+        cpu.registers.b = 0x01;
+        cpu.registers.f.carry = true;
+        cpu.execute(Instruction::ADC(ArithmeticTarget::B));
+        assert_eq!(0x91, cpu.registers.a);
+        test_flags!(cpu, false, false, true, false);
     }
 
     #[test]
@@ -398,7 +403,19 @@ mod tests {
         cpu.registers.c = 0x01;
         cpu.execute(Instruction::SUB(ArithmeticTarget::C));
         assert_eq!(0xFF, cpu.registers.a);
-        test_flags!(cpu, false, true, false, true);
+        test_flags!(cpu, false, true, true, true);
+
+        cpu.registers.a = 0x20;
+        cpu.registers.c = 0x11;
+        cpu.execute(Instruction::SUB(ArithmeticTarget::C));
+        assert_eq!(0x0F, cpu.registers.a);
+        test_flags!(cpu, false, true, true, false);
+
+        cpu.registers.a = 0x20;
+        cpu.registers.c = 0x31;
+        cpu.execute(Instruction::SUB(ArithmeticTarget::C));
+        assert_eq!(0xEF, cpu.registers.a);
+        test_flags!(cpu, false, true, true, true);
     }
 
     #[test]
@@ -409,6 +426,12 @@ mod tests {
         cpu.execute(Instruction::SBC(ArithmeticTarget::C));
         assert_eq!(0x00, cpu.registers.a);
         test_flags!(cpu, true, true, false, false);
+
+        cpu.registers.a = 0x20;
+        cpu.registers.c = 0x31;
+        cpu.execute(Instruction::SBC(ArithmeticTarget::C));
+        assert_eq!(0xEE, cpu.registers.a);
+        test_flags!(cpu, false, true, true, true);
     }
 
     #[test]
@@ -454,7 +477,7 @@ mod tests {
         cpu.registers.c = 0x01;
         cpu.execute(Instruction::CP(ArithmeticTarget::C));
         assert_eq!(0x00, cpu.registers.a);
-        test_flags!(cpu, false, true, false, true);
+        test_flags!(cpu, false, true, true, true);
     }
 
     #[test]
@@ -474,5 +497,10 @@ mod tests {
         cpu.execute(Instruction::INC(ArithmeticTarget::C));
         assert_eq!(0x00, cpu.registers.c);
         test_flags!(cpu, true, false, true, true);
+
+        cpu.registers.c = 0x0F;
+        cpu.execute(Instruction::INC(ArithmeticTarget::C));
+        assert_eq!(0x10, cpu.registers.c);
+        test_flags!(cpu, false, false, true, false);
     }
 }
