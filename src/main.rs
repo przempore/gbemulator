@@ -110,6 +110,7 @@ enum Instruction {
     XOR(ArithmeticTarget),
     CP(ArithmeticTarget), // same as SUB but without storing the result
     INC(ArithmeticTarget),
+    DEC(ArithmeticTarget),
 }
 
 enum ArithmeticTarget {
@@ -188,6 +189,17 @@ impl CPU {
                     ArithmeticTarget::L => self.registers.l = self.inc(self.registers.l),
                 };
             }
+            Instruction::DEC(target) => {
+                match target {
+                    ArithmeticTarget::A => self.registers.a = self.dec(self.registers.a),
+                    ArithmeticTarget::B => self.registers.b = self.dec(self.registers.b),
+                    ArithmeticTarget::C => self.registers.c = self.dec(self.registers.c),
+                    ArithmeticTarget::D => self.registers.d = self.dec(self.registers.d),
+                    ArithmeticTarget::E => self.registers.e = self.dec(self.registers.e),
+                    ArithmeticTarget::H => self.registers.h = self.dec(self.registers.h),
+                    ArithmeticTarget::L => self.registers.l = self.dec(self.registers.l),
+                };
+            }
         }
     }
 
@@ -263,6 +275,17 @@ impl CPU {
         self.registers.f.subtract = false;
         self.registers.f.half_carry = (target & 0xF) == 0xF; // if the lower nibble is 0xF, then adding 1
                                                              // will carry to the higher nibble
+        self.registers.f.carry = carry;
+
+        result
+    }
+
+    fn dec(&mut self, target: u8) -> u8 {
+        let (result, carry) = target.overflowing_sub(1);
+        self.registers.f.zero = result == 0;
+        self.registers.f.subtract = true;
+        self.registers.f.half_carry = (target & 0xF) == 0x0; // if the lower nibble is 0x0, then subtracting 1
+                                                             // will borrow from the higher nibble
         self.registers.f.carry = carry;
 
         result
@@ -502,5 +525,24 @@ mod tests {
         cpu.execute(Instruction::INC(ArithmeticTarget::C));
         assert_eq!(0x10, cpu.registers.c);
         test_flags!(cpu, false, false, true, false);
+    }
+
+    #[test]
+    fn test_dec() {
+        let mut cpu = CPU::default();
+        cpu.registers.a = 0x01;
+        cpu.execute(Instruction::DEC(ArithmeticTarget::A));
+        assert_eq!(0x00, cpu.registers.a);
+        test_flags!(cpu, true, true, false, false);
+
+        cpu.registers.a = 0x00;
+        cpu.execute(Instruction::DEC(ArithmeticTarget::A));
+        assert_eq!(0xFF, cpu.registers.a);
+        test_flags!(cpu, false, true, true, true);
+
+        cpu.registers.c = 0x10;
+        cpu.execute(Instruction::DEC(ArithmeticTarget::C));
+        assert_eq!(0x0F, cpu.registers.c);
+        test_flags!(cpu, false, true, true, false);
     }
 }
