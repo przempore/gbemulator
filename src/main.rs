@@ -111,6 +111,11 @@ enum Instruction {
     CP(ArithmeticTarget), // same as SUB but without storing the result
     INC(ArithmeticTarget),
     DEC(ArithmeticTarget),
+    CCF(),
+    SCF(),
+    RRA(),
+    RLA(),
+    RRCA(),
 }
 
 enum ArithmeticTarget {
@@ -199,6 +204,27 @@ impl CPU {
                     ArithmeticTarget::H => self.registers.h = self.dec(self.registers.h),
                     ArithmeticTarget::L => self.registers.l = self.dec(self.registers.l),
                 };
+            }
+            Instruction::CCF() => {
+                self.registers.f.carry = !self.registers.f.carry;
+            }
+            Instruction::SCF() => {
+                self.registers.f.carry = true;
+            }
+            Instruction::RRA() => {
+                let carry = self.registers.f.carry as u8;
+                self.registers.f.carry = self.registers.a & 0x01 == 0x01;
+                self.registers.a >>= 1;
+                self.registers.a |= carry << 7;
+            }
+            Instruction::RLA() => {
+                let carry = self.registers.f.carry as u8;
+                self.registers.f.carry = self.registers.a & 0x80 == 0x80;
+                self.registers.a <<= 1;
+                self.registers.a |= carry;
+            }
+            Instruction::RRCA() => {
+                self.registers.a = self.registers.a.rotate_right(1);
             }
         }
     }
@@ -544,5 +570,87 @@ mod tests {
         cpu.execute(Instruction::DEC(ArithmeticTarget::C));
         assert_eq!(0x0F, cpu.registers.c);
         test_flags!(cpu, false, true, true, false);
+    }
+
+    #[test]
+    fn test_ccf() {
+        let mut cpu = CPU::default();
+        cpu.execute(Instruction::CCF());
+        assert_eq!(true, cpu.registers.f.carry);
+
+        cpu.execute(Instruction::CCF());
+        assert_eq!(false, cpu.registers.f.carry);
+    }
+
+    #[test]
+    fn test_scf() {
+        let mut cpu = CPU::default();
+        cpu.execute(Instruction::SCF());
+        assert_eq!(true, cpu.registers.f.carry);
+
+        cpu.execute(Instruction::SCF());
+        assert_eq!(true, cpu.registers.f.carry);
+    }
+
+    #[test]
+    fn test_rra() {
+        let mut cpu = CPU::default();
+        cpu.registers.a = 0b0000_0001;
+        cpu.execute(Instruction::RRA());
+        assert_eq!(0b0000_0000, cpu.registers.a);
+        assert_eq!(true, cpu.registers.f.carry);
+        test_flags!(cpu, false, false, false, true);
+
+        cpu.registers.a = 0b0000_0000;
+        cpu.execute(Instruction::RRA());
+        assert_eq!(0b1000_0000, cpu.registers.a);
+        assert_eq!(false, cpu.registers.f.carry);
+
+        cpu.registers.f.carry = true;
+        cpu.registers.a = 0b1000_0000;
+        cpu.execute(Instruction::RRA());
+        assert_eq!(0b1100_0000, cpu.registers.a);
+        assert_eq!(false, cpu.registers.f.carry);
+
+        cpu.registers.a = 0b0001_0000;
+        cpu.execute(Instruction::RRA());
+        assert_eq!(0b0000_1000, cpu.registers.a);
+        assert_eq!(false, cpu.registers.f.carry);
+    }
+
+    #[test]
+    fn test_rla() {
+        let mut cpu = CPU::default();
+        cpu.registers.a = 0b0000_0001;
+        cpu.execute(Instruction::RLA());
+        assert_eq!(0b0000_0010, cpu.registers.a);
+        assert_eq!(false, cpu.registers.f.carry);
+
+        cpu.registers.a = 0b1000_0000;
+        cpu.execute(Instruction::RLA());
+        assert_eq!(0b0000_0000, cpu.registers.a);
+        assert_eq!(true, cpu.registers.f.carry);
+
+        cpu.registers.f.carry = true;
+        cpu.registers.a = 0b1000_0000;
+        cpu.execute(Instruction::RLA());
+        assert_eq!(0b0000_0001, cpu.registers.a);
+        assert_eq!(true, cpu.registers.f.carry);
+    }
+
+    #[test]
+    fn test_rrca() {
+        let mut cpu = CPU::default();
+        cpu.registers.a = 0b0000_0001;
+        cpu.execute(Instruction::RRCA());
+        println!("{:08b}", cpu.registers.a);
+        assert_eq!(0b1000_0000, cpu.registers.a);
+        assert_eq!(false, cpu.registers.f.carry);
+
+        cpu.registers.f.carry = true;
+        cpu.registers.a = 0b1000_0000;
+        cpu.execute(Instruction::RRCA());
+        assert_eq!(0b0100_0000, cpu.registers.a);
+        assert_eq!(true, cpu.registers.f.carry);
     }
 }
